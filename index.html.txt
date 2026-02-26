@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heinenhof Financial Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Babel for in-browser JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Import Maps to load React and Lucide from ESM CDN -->
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.344.0"
+        }
+    }
+    </script>
+</head>
+<body class="bg-[#F8F9FA]">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useMemo, useEffect } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { BarChart3, TrendingUp, Settings, ChevronDown, ChevronUp, Users, Home, Coffee } from 'lucide-react';
+
+        // Brand Colors from Document
+        const colors = {
+          seafoam: '#93E9BE',
+          seafoamLight: '#A7F3D0',
+          dustyTeal: '#5E8B7E',
+          dustyTealLight: '#659C8B',
+          lavender: '#BDB2FF',
+          warmGray: '#D3D3D3',
+          warmGrayLight: '#E0E0E0',
+          textPrimary: '#4A4A4A',
+          bgPrimary: '#F8F9FA'
+        };
+
+        // Base Scenario Assumptions
+        const scenarios = {
+          low: {
+            flowState: { coversPerDay: 120, avgTicket: 34, cogsPct: 39, laborPct: 36, opCosts: 140000 },
+            theCore: { events: 30, guestsPerEvent: 60, revPerGuest: 160, alacarteRev: 178500, cogsPct: 39, laborPct: 36, opCosts: 105000 },
+            theField: { pods: 12, occupancy: 35, adr: 220, ancillaryPct: 28, cogsPct: 39, laborPct: 36, opCosts: 90000 }
+          },
+          realistic: {
+            flowState: { coversPerDay: 180, avgTicket: 38, cogsPct: 36, laborPct: 32, opCosts: 138000 },
+            theCore: { events: 45, guestsPerEvent: 75, revPerGuest: 190, alacarteRev: 250000, cogsPct: 36, laborPct: 32, opCosts: 105000 },
+            theField: { pods: 12, occupancy: 45, adr: 240, ancillaryPct: 35, cogsPct: 36, laborPct: 32, opCosts: 90000 }
+          },
+          high: {
+            flowState: { coversPerDay: 220, avgTicket: 42, cogsPct: 32, laborPct: 28, opCosts: 150000 },
+            theCore: { events: 60, guestsPerEvent: 90, revPerGuest: 220, alacarteRev: 321500, cogsPct: 32, laborPct: 28, opCosts: 120000 },
+            theField: { pods: 12, occupancy: 55, adr: 260, ancillaryPct: 40, cogsPct: 32, laborPct: 28, opCosts: 90000 }
+          }
+        };
+
+        // Growth Assumptions for Years 2 and 3 (added to base)
+        const growth = {
+          flowState: { y2CoversAdd: 30, y3CoversAdd: 60, y2TicketAdd: 2, y3TicketAdd: 4 },
+          theCore: { y2EventsAdd: 10, y3EventsAdd: 20, y2RevAdd: 15, y3RevAdd: 30 },
+          theField: { y2OccAdd: 15, y3OccAdd: 25, y2AdrAdd: 20, y3AdrAdd: 40 }
+        };
+
+        function App() {
+          const [activeScenario, setActiveScenario] = useState('realistic');
+          const [inputs, setInputs] = useState(scenarios['realistic']);
+          const [expandedSection, setExpandedSection] = useState('theField');
+
+          // Reset inputs when scenario changes
+          useEffect(() => {
+            setInputs(scenarios[activeScenario]);
+          }, [activeScenario]);
+
+          const handleInputChange = (unit, field, value) => {
+            setInputs(prev => ({
+              ...prev,
+              [unit]: {
+                ...prev[unit],
+                [field]: parseFloat(value) || 0
+              }
+            }));
+          };
+
+          // Calculations
+          const calculations = useMemo(() => {
+            const calcYear = (yearNum) => {
+              // FLOW STATE (130 operating days - 5 days/week seasonal)
+              const fsCovers = inputs.flowState.coversPerDay + (yearNum === 2 ? growth.flowState.y2CoversAdd : yearNum === 3 ? growth.flowState.y3CoversAdd : 0);
+              const fsTicket = inputs.flowState.avgTicket + (yearNum === 2 ? growth.flowState.y2TicketAdd : yearNum === 3 ? growth.flowState.y3TicketAdd : 0);
+              const fsRev = fsCovers * 130 * fsTicket;
+              const fsCogs = fsRev * (inputs.flowState.cogsPct / 100);
+              const fsLabor = fsRev * (inputs.flowState.laborPct / 100);
+              const fsEbitda = fsRev - fsCogs - fsLabor - inputs.flowState.opCosts;
+
+              // THE CORE
+              const coreEvents = inputs.theCore.events + (yearNum === 2 ? growth.theCore.y2EventsAdd : yearNum === 3 ? growth.theCore.y3EventsAdd : 0);
+              const coreRevPerGuest = inputs.theCore.revPerGuest + (yearNum === 2 ? growth.theCore.y2RevAdd : yearNum === 3 ? growth.theCore.y3RevAdd : 0);
+              const coreEventRev = coreEvents * inputs.theCore.guestsPerEvent * coreRevPerGuest;
+              const coreAlacarte = inputs.theCore.alacarteRev * (1 + ((yearNum - 1) * 0.1)); // 10% growth per year
+              const coreRev = coreEventRev + coreAlacarte;
+              const coreCogs = coreRev * (inputs.theCore.cogsPct / 100);
+              const coreLabor = coreRev * (inputs.theCore.laborPct / 100);
+              const coreEbitda = coreRev - coreCogs - coreLabor - inputs.theCore.opCosts;
+
+              // THE FIELD (365 days)
+              const fieldOcc = Math.min(100, inputs.theField.occupancy + (yearNum === 2 ? growth.theField.y2OccAdd : yearNum === 3 ? growth.theField.y3OccAdd : 0));
+              const fieldAdr = inputs.theField.adr + (yearNum === 2 ? growth.theField.y2AdrAdd : yearNum === 3 ? growth.theField.y3AdrAdd : 0);
+              const fieldRoomRev = inputs.theField.pods * 365 * (fieldOcc / 100) * fieldAdr;
+              const fieldAncillaryRev = fieldRoomRev * (inputs.theField.ancillaryPct / 100);
+              const fieldRev = fieldRoomRev + fieldAncillaryRev;
+              const fieldCogs = fieldAncillaryRev * (inputs.theField.cogsPct / 100); // COGS mostly applies to F&B/Retail
+              const fieldLabor = fieldRev * (inputs.theField.laborPct / 100);
+              const fieldEbitda = fieldRev - fieldCogs - fieldLabor - inputs.theField.opCosts;
+
+              const totalRev = fsRev + coreRev + fieldRev;
+              const totalEbitda = fsEbitda + coreEbitda + fieldEbitda;
+              const overallMargin = totalRev > 0 ? (totalEbitda / totalRev) * 100 : 0;
+
+              return {
+                fsRev, fsEbitda, fsMargin: (fsEbitda/fsRev)*100,
+                coreRev, coreEbitda, coreMargin: (coreEbitda/coreRev)*100,
+                fieldRev, fieldEbitda, fieldMargin: (fieldEbitda/fieldRev)*100,
+                totalRev, totalEbitda, overallMargin
+              };
+            };
+
+            return {
+              y1: calcYear(1),
+              y2: calcYear(2),
+              y3: calcYear(3)
+            };
+          }, [inputs]);
+
+          const formatCurr = (val) => new Intl.NumberFormat('en-EU', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(val);
+          const formatPct = (val) => new Intl.NumberFormat('en-EU', { maximumFractionDigits: 1 }).format(val) + '%';
+
+          const renderInput = (label, unit, field, isPct = false, min = 0, max = undefined) => (
+            <div className="flex flex-col space-y-1">
+              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider">{label}</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min={min}
+                  max={max}
+                  value={inputs[unit][field]}
+                  onChange={(e) => handleInputChange(unit, field, e.target.value)}
+                  className="w-full pl-3 pr-8 py-2 border border-gray-300 rounded focus:ring-2 focus:outline-none text-gray-800 font-medium"
+                  style={{ focusRingColor: colors.seafoam }}
+                />
+                <span className="absolute right-3 top-2.5 text-gray-400 font-medium">{isPct ? '%' : ''}</span>
+              </div>
+            </div>
+          );
+
+          const renderVisualBar = (values, total) => {
+            const w1 = (values[0] / total) * 100;
+            const w2 = (values[1] / total) * 100;
+            const w3 = (values[2] / total) * 100;
+            return (
+              <div className="w-full h-4 bg-gray-200 rounded-full flex overflow-hidden mt-2">
+                <div style={{ width: `${w1}%`, backgroundColor: colors.seafoam }} title={`Flow State`} />
+                <div style={{ width: `${w2}%`, backgroundColor: colors.dustyTeal }} title={`The Core`} />
+                <div style={{ width: `${w3}%`, backgroundColor: colors.lavender }} title={`The Field`} />
+              </div>
+            );
+          };
+
+          return (
+            <div className="min-h-screen font-sans p-6" style={{ backgroundColor: colors.bgPrimary, color: colors.textPrimary }}>
+              
+              {/* HEADER */}
+              <header className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row md:items-end justify-between border-b pb-6" style={{ borderColor: colors.warmGrayLight }}>
+                <div>
+                  <h1 className="text-3xl font-bold tracking-tight" style={{ color: colors.dustyTeal }}>Heinenhof Business Projections</h1>
+                  <p className="text-gray-500 mt-1">Interactive Financial Model: Flow State, The Core & The Field</p>
+                </div>
+                
+                <div className="mt-6 md:mt-0 flex flex-col md:items-end">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Select Scenario</span>
+                  <div className="flex bg-white rounded-lg shadow-sm p-1 border" style={{ borderColor: colors.warmGrayLight }}>
+                    {['low', 'realistic', 'high'].map((scen) => (
+                      <button
+                        key={scen}
+                        onClick={() => setActiveScenario(scen)}
+                        className={`px-6 py-2 rounded-md text-sm font-bold capitalize transition-all ${
+                          activeScenario === scen ? 'shadow-sm text-white' : 'text-gray-500 hover:bg-gray-50'
+                        }`}
+                        style={activeScenario === scen ? { backgroundColor: colors.dustyTeal } : {}}
+                      >
+                        {scen}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </header>
+
+              <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+                
+                {/* LEFT COLUMN: INPUTS */}
+                <div className="lg:col-span-4 space-y-4">
+                  <div className="bg-white p-5 rounded-xl shadow-sm border" style={{ borderColor: colors.warmGrayLight }}>
+                    <div className="flex items-center space-x-2 mb-4 pb-4 border-b">
+                      <Settings size={20} style={{ color: colors.dustyTeal }} />
+                      <h2 className="text-lg font-bold" style={{ color: colors.dustyTeal }}>Key Variables (Year 1)</h2>
+                    </div>
+
+                    {/* The Field Accordion */}
+                    <div className="mb-3 border rounded-lg overflow-hidden" style={{ borderColor: colors.warmGrayLight }}>
+                      <button 
+                        className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+                        onClick={() => setExpandedSection(expandedSection === 'theField' ? null : 'theField')}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <Home size={18} style={{ color: colors.lavender }} />
+                          <span className="font-bold text-gray-800">The Field (Glamping)</span>
+                        </div>
+                        {expandedSection === 'theField' ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                      </button>
+                      {expandedSection === 'theField' && (
+                        <div className="p-4 bg-white grid grid-cols-2 gap-4">
+                          {renderInput('Occupancy Rate', 'theField', 'occupancy', true, 0, 100)}
+                          {renderInput('ADR (€)', 'theField', 'adr')}
+                          {renderInput('Ancillary Spend', 'theField', 'ancillaryPct', true)}
+                          {renderInput('Personnel Cost', 'theField', 'laborPct', true)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Flow State Accordion */}
+                    <div className="mb-3 border rounded-lg overflow-hidden" style={{ borderColor: colors.warmGrayLight }}>
+                      <button 
+                        className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+                        onClick={() => setExpandedSection(expandedSection === 'flowState' ? null : 'flowState')}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <Coffee size={18} style={{ color: colors.seafoam }} />
+                          <span className="font-bold text-gray-800">Flow State (Cafe)</span>
+                        </div>
+                        {expandedSection === 'flowState' ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                      </button>
+                      {expandedSection === 'flowState' && (
+                        <div className="p-4 bg-white grid grid-cols-2 gap-4">
+                          {renderInput('Covers / Day', 'flowState', 'coversPerDay')}
+                          {renderInput('Avg Ticket (€)', 'flowState', 'avgTicket')}
+                          {renderInput('COGS %', 'flowState', 'cogsPct', true)}
+                          {renderInput('Personnel Cost', 'flowState', 'laborPct', true)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* The Core Accordion */}
+                    <div className="mb-3 border rounded-lg overflow-hidden" style={{ borderColor: colors.warmGrayLight }}>
+                      <button 
+                        className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+                        onClick={() => setExpandedSection(expandedSection === 'theCore' ? null : 'theCore')}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <Users size={18} style={{ color: colors.dustyTeal }} />
+                          <span className="font-bold text-gray-800">The Core (Events)</span>
+                        </div>
+                        {expandedSection === 'theCore' ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                      </button>
+                      {expandedSection === 'theCore' && (
+                        <div className="p-4 bg-white grid grid-cols-2 gap-4">
+                          {renderInput('Events / Year', 'theCore', 'events')}
+                          {renderInput('Guests / Event', 'theCore', 'guestsPerEvent')}
+                          {renderInput('Rev / Guest (€)', 'theCore', 'revPerGuest')}
+                          {renderInput('Personnel Cost', 'theCore', 'laborPct', true)}
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="mt-4 p-4 bg-yellow-50 rounded-lg text-sm text-yellow-800 border border-yellow-200">
+                      <p><strong>Note:</strong> Adjusting parameters above updates Year 1 base assumptions. Years 2 & 3 incorporate predefined growth logic scaling from these inputs.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* RIGHT COLUMN: OUTPUTS */}
+                <div className="lg:col-span-8 space-y-6">
+                  
+                  {/* Top KPI Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {['y1', 'y2', 'y3'].map((year, idx) => (
+                      <div key={year} className="bg-white p-5 rounded-xl shadow-sm border" style={{ borderColor: colors.warmGrayLight }}>
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="font-bold text-gray-500 uppercase tracking-wide">Year {idx + 1} Target</h3>
+                          <TrendingUp size={18} style={{ color: colors.seafoam }} />
+                        </div>
+                        <div className="space-y-2">
+                          <div>
+                            <p className="text-sm text-gray-500">Total Revenue</p>
+                            <p className="text-2xl font-black" style={{ color: colors.dustyTeal }}>
+                              {formatCurr(calculations[year].totalRev)}
+                            </p>
+                          </div>
+                          <div className="pt-2 border-t">
+                            <p className="text-sm text-gray-500">Total EBITDA</p>
+                            <div className="flex items-end space-x-2">
+                              <p className="text-xl font-bold" style={{ color: colors.dustyTeal }}>
+                                {formatCurr(calculations[year].totalEbitda)}
+                              </p>
+                              <p className="text-sm font-semibold mb-1" style={{ color: colors.seafoam }}>
+                                ({formatPct(calculations[year].overallMargin)})
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        {/* Visual breakdown bar */}
+                        <div className="mt-4">
+                          <p className="text-xs text-gray-400 mb-1">Revenue Mix</p>
+                          {renderVisualBar(
+                            [calculations[year].fsRev, calculations[year].coreRev, calculations[year].fieldRev],
+                            calculations[year].totalRev
+                          )}
+                          <div className="flex justify-between text-[10px] text-gray-400 mt-1 uppercase font-bold">
+                            <span>Flow State</span>
+                            <span>The Core</span>
+                            <span>The Field</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Detailed Financials Table */}
+                  <div className="bg-white rounded-xl shadow-sm border overflow-hidden" style={{ borderColor: colors.warmGrayLight }}>
+                    <div className="p-5 border-b bg-gray-50 flex items-center space-x-2">
+                      <BarChart3 size={20} style={{ color: colors.dustyTeal }} />
+                      <h2 className="text-lg font-bold" style={{ color: colors.dustyTeal }}>Detailed Unit Projections</h2>
+                    </div>
+                    
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead>
+                          <tr className="bg-white border-b border-gray-100">
+                            <th className="p-4 font-semibold text-gray-600">Business Unit</th>
+                            <th className="p-4 font-semibold text-gray-600 text-right">Metric</th>
+                            <th className="p-4 font-semibold text-gray-600 text-right">Year 1</th>
+                            <th className="p-4 font-semibold text-gray-600 text-right bg-gray-50/50">Year 2</th>
+                            <th className="p-4 font-semibold text-gray-600 text-right">Year 3</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          
+                          {/* The Field */}
+                          <tr className="hover:bg-gray-50 transition-colors">
+                            <td className="p-4 font-bold align-top" style={{ color: colors.lavender }} rowSpan="2">
+                              <div className="flex items-center space-x-2">
+                                <Home size={16} /> <span>The Field</span>
+                              </div>
+                            </td>
+                            <td className="p-4 text-right text-gray-500 font-medium">Revenue</td>
+                            <td className="p-4 text-right font-bold">{formatCurr(calculations.y1.fieldRev)}</td>
+                            <td className="p-4 text-right font-bold bg-gray-50/50">{formatCurr(calculations.y2.fieldRev)}</td>
+                            <td className="p-4 text-right font-bold">{formatCurr(calculations.y3.fieldRev)}</td>
+                          </tr>
+                          <tr className="hover:bg-gray-50 transition-colors border-b-2" style={{ borderBottomColor: colors.warmGrayLight }}>
+                            <td className="p-4 text-right text-gray-500 font-medium">EBITDA</td>
+                            <td className="p-4 text-right font-bold" style={{ color: colors.dustyTealLight }}>
+                              {formatCurr(calculations.y1.fieldEbitda)} <span className="text-xs ml-1 block text-gray-400">{formatPct(calculations.y1.fieldMargin)}</span>
+                            </td>
+                            <td className="p-4 text-right font-bold bg-gray-50/50" style={{ color: colors.dustyTealLight }}>
+                              {formatCurr(calculations.y2.fieldEbitda)} <span className="text-xs ml-1 block text-gray-400">{formatPct(calculations.y2.fieldMargin)}</span>
+                            </td>
+                            <td className="p-4 text-right font-bold" style={{ color: colors.dustyTealLight }}>
+                              {formatCurr(calculations.y3.fieldEbitda)} <span className="text-xs ml-1 block text-gray-400">{formatPct(calculations.y3.fieldMargin)}</span>
+                            </td>
+                          </tr>
+
+                          {/* Flow State */}
+                          <tr className="hover:bg-gray-50 transition-colors">
+                            <td className="p-4 font-bold align-top" style={{ color: colors.seafoam }} rowSpan="2">
+                              <div className="flex items-center space-x-2">
+                                <Coffee size={16} /> <span>Flow State</span>
+                              </div>
+                            </td>
+                            <td className="p-4 text-right text-gray-500 font-medium">Revenue</td>
+                            <td className="p-4 text-right font-bold">{formatCurr(calculations.y1.fsRev)}</td>
+                            <td className="p-4 text-right font-bold bg-gray-50/50">{formatCurr(calculations.y2.fsRev)}</td>
+                            <td className="p-4 text-right font-bold">{formatCurr(calculations.y3.fsRev)}</td>
+                          </tr>
+                          <tr className="hover:bg-gray-50 transition-colors border-b-2" style={{ borderBottomColor: colors.warmGrayLight }}>
+                            <td className="p-4 text-right text-gray-500 font-medium">EBITDA</td>
+                            <td className="p-4 text-right font-bold" style={{ color: colors.dustyTealLight }}>
+                              {formatCurr(calculations.y1.fsEbitda)} <span className="text-xs ml-1 block text-gray-400">{formatPct(calculations.y1.fsMargin)}</span>
+                            </td>
+                            <td className="p-4 text-right font-bold bg-gray-50/50" style={{ color: colors.dustyTealLight }}>
+                              {formatCurr(calculations.y2.fsEbitda)} <span className="text-xs ml-1 block text-gray-400">{formatPct(calculations.y2.fsMargin)}</span>
+                            </td>
+                            <td className="p-4 text-right font-bold" style={{ color: colors.dustyTealLight }}>
+                              {formatCurr(calculations.y3.fsEbitda)} <span className="text-xs ml-1 block text-gray-400">{formatPct(calculations.y3.fsMargin)}</span>
+                            </td>
+                          </tr>
+
+                          {/* The Core */}
+                          <tr className="hover:bg-gray-50 transition-colors">
+                            <td className="p-4 font-bold align-top" style={{ color: colors.dustyTeal }} rowSpan="2">
+                              <div className="flex items-center space-x-2">
+                                <Users size={16} /> <span>The Core</span>
+                              </div>
+                            </td>
+                            <td className="p-4 text-right text-gray-500 font-medium">Revenue</td>
+                            <td className="p-4 text-right font-bold">{formatCurr(calculations.y1.coreRev)}</td>
+                            <td className="p-4 text-right font-bold bg-gray-50/50">{formatCurr(calculations.y2.coreRev)}</td>
+                            <td className="p-4 text-right font-bold">{formatCurr(calculations.y3.coreRev)}</td>
+                          </tr>
+                          <tr className="hover:bg-gray-50 transition-colors">
+                            <td className="p-4 text-right text-gray-500 font-medium">EBITDA</td>
+                            <td className="p-4 text-right font-bold" style={{ color: colors.dustyTealLight }}>
+                              {formatCurr(calculations.y1.coreEbitda)} <span className="text-xs ml-1 block text-gray-400">{formatPct(calculations.y1.coreMargin)}</span>
+                            </td>
+                            <td className="p-4 text-right font-bold bg-gray-50/50" style={{ color: colors.dustyTealLight }}>
+                              {formatCurr(calculations.y2.coreEbitda)} <span className="text-xs ml-1 block text-gray-400">{formatPct(calculations.y2.coreMargin)}</span>
+                            </td>
+                            <td className="p-4 text-right font-bold" style={{ color: colors.dustyTealLight }}>
+                              {formatCurr(calculations.y3.coreEbitda)} <span className="text-xs ml-1 block text-gray-400">{formatPct(calculations.y3.coreMargin)}</span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
